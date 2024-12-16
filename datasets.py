@@ -139,9 +139,6 @@ class CustomDataset(Dataset):
         tree = et.parse(annot_file_path)
         root = tree.getroot()
         for member in root.findall('object'):
-            # Map the current object name to `classes` list to get
-            # the label index and append to `labels` list.
-            labels.append(self.classes.index(member.find('name').text))
             
             # xmin = left corner x-coordinates
             xmin = float(member.find('bndbox').find('xmin').text)
@@ -152,7 +149,7 @@ class CustomDataset(Dataset):
             # ymax = right corner y-coordinates
             ymax = float(member.find('bndbox').find('ymax').text)
 
-            xmin, ymin, xmax, ymax = self.check_image_and_annotation(
+            if self.check_image_and_annotation(
                 xmin, 
                 ymin, 
                 xmax, 
@@ -160,9 +157,9 @@ class CustomDataset(Dataset):
                 image_width, 
                 image_height, 
                 orig_data=True
-            )
+            ):
 
-            orig_boxes.append([xmin, ymin, xmax, ymax])
+                orig_boxes.append([xmin, ymin, xmax, ymax])
             
             # Resize the bounding boxes according to the
             # desired `width`, `height`.
@@ -171,7 +168,7 @@ class CustomDataset(Dataset):
             ymin_final = (ymin/image_height)*image_resized.shape[0]
             ymax_final = (ymax/image_height)*image_resized.shape[0]
 
-            xmin_final, ymin_final, xmax_final, ymax_final = self.check_image_and_annotation(
+            if self.check_image_and_annotation(
                 xmin_final, 
                 ymin_final, 
                 xmax_final, 
@@ -179,9 +176,12 @@ class CustomDataset(Dataset):
                 image_resized.shape[1], 
                 image_resized.shape[0],
                 orig_data=False
-            )
-            
-            boxes.append([xmin_final, ymin_final, xmax_final, ymax_final])
+            ):
+                
+                boxes.append([xmin_final, ymin_final, xmax_final, ymax_final])
+                # Map the current object name to `classes` list to get
+                # the label index and append to `labels` list.
+                labels.append(self.classes.index(member.find('name').text))
         # except:
         #     pass
         # Bounding box to tensor.
@@ -210,39 +210,17 @@ class CustomDataset(Dataset):
         Check that all x_max and y_max are not more than the image
         width or height.
         """
-        if ymax > height:
-            ymax = height
-        if xmax > width:
-            xmax = width
-        if xmax - xmin <= 1.0:
+        valid = True
+        if xmin < 0 or xmax > width or xmax - xmin <= 1.0:
             if orig_data:
-                # print(
-                    # '\n',
-                    # '!!! xmax is equal to xmin in data annotations !!!'
-                    # 'Please check data'
-                # )
-                # print(
-                    # 'Increasing xmax by 1 pixel to continue training for now...',
-                    # 'THIS WILL ONLY BE LOGGED ONCE',
-                    # '\n'
-                # )
                 self.log_annot_issue_x = False
-            xmin = xmin - 1
-        if ymax - ymin <= 1.0:
+            valid = False
+
+        if ymin < 0 or ymax > height or ymax - ymin <= 1.0:
             if orig_data:
-                # print(
-                #     '\n',
-                #     '!!! ymax is equal to ymin in data annotations !!!',
-                #     'Please check data'
-                # )
-                # print(
-                #     'Increasing ymax by 1 pixel to continue training for now...',
-                #     'THIS WILL ONLY BE LOGGED ONCE',
-                #     '\n'
-                # )
                 self.log_annot_issue_y = False
-            ymin = ymin - 1
-        return xmin, ymin, xmax, ymax
+            valid = False
+        return valid
 
 
     def load_cutmix_image_and_boxes(self, index, resize_factor=512):
@@ -339,6 +317,7 @@ class CustomDataset(Dataset):
         target["iscrowd"] = iscrowd
         image_id = torch.tensor([idx])
         target["image_id"] = image_id
+
 
         if self.use_train_aug: # Use train augmentation if argument is passed.
             train_aug = get_train_aug()
