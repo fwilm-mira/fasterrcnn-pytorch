@@ -13,3 +13,9 @@ wandb/*
 
 # IPython checkpoints
 .ipynb_checkpoints
+
+# Mac stuff
+.DS_Store
+
+# VS Code
+launch.json
